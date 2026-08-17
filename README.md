@@ -37,13 +37,8 @@ cd dsh-preset-literature
 dsh-preset-literature/
 ├── install.sh               # 一键安装脚本
 ├── presets/                 # 预设目录(安装到 ~/.dsh/.agent-presets/)
-│   ├── channel-router/      # 主预设(文献精读 · Router Paper)
-│   ├── router-standard/     # 官方 flash 渠道委托源
-│   ├── router-flash/        # opencode flash 渠道委托源
-│   ├── anchored-standard/   # 官方 pro 渠道委托源
-│   ├── warmupbetter/        # 官方其他渠道委托源(含 LICENSE.deepseek-harness)
-│   ├── warmupbetter-replay/ # opencode 其他渠道委托源(含 LICENSE.deepseek-harness)
-│   └── router-paper/        # 文献精读核心(persona + 论文工具路由)
+│   ├── channel-router/      # 主预设 📚 文献精读 · Router Paper
+│   └── router-paper/        # 文献精读核心(学者 persona + 论文任务路由)
 └── plugin/                  # dsh-paper-reading 论文插件(源码 + dist/*.tgz)
 ```
 
@@ -51,10 +46,7 @@ dsh-preset-literature/
 
 ```bash
 # 1) 把 presets/ 下各目录复制到 agent-presets 根目录
-cp -r presets/channel-router presets/router-standard presets/router-flash \
-      presets/anchored-standard presets/warmupbetter \
-      presets/warmupbetter-replay presets/router-paper \
-      ~/.dsh/.agent-presets/
+cp -r presets/channel-router presets/router-paper ~/.dsh/.agent-presets/
 
 # 2) 重启 DeepSeek Harness(或刷新预设列表)
 
@@ -70,12 +62,12 @@ cp -r presets/channel-router presets/router-standard presets/router-flash \
 
 ## 说明
 
+- **只含文献相关组件**:主预设 `channel-router`(文献精读 · Router Paper)
+  + 文献精读核心 `router-paper` + 论文插件;不含其他渠道委托源
+- 渠道委托源(官方 API / opencode-go 的各渠道预设)未包含:
+  对应渠道自动降级为中性 persona,文献/论文功能不受影响(以文献用途为主)
 - 内部 id 保持 `channel-router`:现有会话绑定与门控依赖该 id;
   显示名「📚 文献精读 · Router Paper」面向用户
-- `warmupbetter` / `warmupbetter-replay` 源自 DeepSeek Harness 社区,
-  各目录内保留其原始 `LICENSE.deepseek-harness`
-- 其他预设(如 `dsh-minimal-v3`、`standard-vision`、`zero-anchored-standard`)
-  与本预设无依赖,不包含在本仓库
 
 ## License
 

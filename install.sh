@@ -5,7 +5,7 @@ set -euo pipefail
 # 无论从哪个目录调用,都先切到脚本所在仓库根
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-PRESETS=(channel-router router-standard router-flash anchored-standard warmupbetter warmupbetter-replay router-paper)
+PRESETS=(channel-router router-paper)
 AGENT_PRESETS_DIR="${AGENT_PRESETS_DIR:-$HOME/.dsh/.agent-presets}"
 DSH_PROFILE_DIR="${DSH_PROFILE_DIR:-$HOME/.dsh/profiles/web}"
 
