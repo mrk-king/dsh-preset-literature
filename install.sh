@@ -31,6 +31,33 @@ TGZ_ABS="$(cd "$(dirname "$TGZ")" && pwd)/$(basename "$TGZ")"
 mkdir -p "$DSH_PROFILE_DIR"
 if (cd "$DSH_PROFILE_DIR" && npm i "$TGZ_ABS" --no-audit --no-fund >/dev/null 2>&1); then
   echo "    插件已通过 npm 安装"
+    # 注册 bundle:加入 profile 的 dsh.profile.bundles,确保 harness 加载
+    python3 - "$DSH_PROFILE_DIR/package.json" <<'PYEOF'
+import json, sys
+p = sys.argv[1]
+with open(p, encoding='utf-8') as f:
+    d = json.load(f)
+b = d.setdefault('dsh', {}).setdefault('profile', {}).setdefault('bundles', [])
+if '@dsh-external/dsh-paper-reading' not in b:
+    b.append('@dsh-external/dsh-paper-reading')
+with open(p, 'w', encoding='utf-8') as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+    f.write('\n')
+print('    bundle 已注册:@dsh-external/dsh-paper-reading')
+PYEOF
+    # 移除 patch 里的禁用条目(若有)
+    PATCH="$DSH_PROFILE_DIR/cordis.patch.yml"
+    if [ -f "$PATCH" ]; then
+      python3 - "$PATCH" <<'PYEOF'
+import sys, re
+p = sys.argv[1]
+s = open(p, encoding='utf-8').read()
+lines = [l for l in s.split('
+') if re.search(r'disabled:\s*true', l) and 'paper-reading' in l]
+if lines:
+    print('    ⚠️ 检测到禁用条目,请手动检查:', lines)
+PYEOF
+    fi
 else
   echo "    npm 安装失败,改用直接解压(node_modules/@dsh-external/dsh-paper-reading)"
   TMP="$(mktemp -d)"

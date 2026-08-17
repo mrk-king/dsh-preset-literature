@@ -1,0 +1,4 @@
+# dsh bundle layer: 论文阅读插件(host 工具 + web 面板)
+- insert:
+    - id: dsh-paper-reading
+      name: '@dsh-external/dsh-paper-reading'
