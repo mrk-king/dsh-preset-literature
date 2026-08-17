@@ -33,8 +33,14 @@
 ```bash
 cd ~/.dsh/profiles/web
 npm i /path/to/dsh-external-dsh-paper-reading-<version>.tgz
+# 注册 bundle:把 "@dsh-external/dsh-paper-reading" 加入
+# 本目录 package.json 的 dsh.profile.bundles 数组(插件自带 cordis.patch.yml,
+# 注册后由 harness 自动装配;不加则插件不会被加载)
 # 重启 DeepSeek Harness
 ```
+
+> 更省事:直接用 [dsh-preset-literature](https://github.com/mrk-king/dsh-preset-literature)
+> 的 `install.sh`,一键完成预设 + 插件 + bundle 注册。
 
 ### 方式二:源码构建
 
