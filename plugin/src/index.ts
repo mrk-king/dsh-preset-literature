@@ -255,15 +255,25 @@ export function apply(ctx: AppContext, config: Config): void {
         const text = norm.text.slice(0, config.maxCaptureChars)
         const hash = lib.captureHash(text)
         const duplicate = lib.isDuplicate(root, paper.id, hash)
+        // 返回对象不能带 undefined 字段(JSON 序列化丢键 → harness lossless-JSON 校验失败):
+        // 仅当真的发生论文切换时才带 switchedTo 键,否则整个省略(输出 schema 中该字段非必填)
+        const base = {
+          normalized: text,
+          duplicate: false,
+          paper,
+          savedPath: '',
+          droppedLines: norm.droppedLines,
+        }
         if (!duplicate) {
           const stamp = lib.nowStamp()
           const label = args?.label ? ` [${String(args.label).trim()}]` : ''
           const block = `## 📌 片段 [${stamp}]${label}\n\n${text}`
-          const savedPath = lib.appendNote(root, paper.id, block)
+          base.savedPath = lib.appendNote(root, paper.id, block)
           lib.rememberCapture(root, paper.id, hash, args?.label)
-          return { normalized: text, duplicate: false, paper, savedPath, droppedLines: norm.droppedLines, switchedTo }
+        } else {
+          base.duplicate = true
         }
-        return { normalized: text, duplicate: true, paper, savedPath: '', droppedLines: norm.droppedLines, switchedTo }
+        return { ...base, ...(switchedTo ? { switchedTo } : {}) }
       },
     },
     {

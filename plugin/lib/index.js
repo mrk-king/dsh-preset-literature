@@ -2456,26 +2456,22 @@ function apply(ctx, config) {
 				} : normalizePastedText(raw);
 				const text = norm.text.slice(0, config.maxCaptureChars);
 				const hash = captureHash(text);
-				if (!isDuplicate(root, paper.id, hash)) {
-					const block = `## 📌 片段 [${nowStamp()}]${args?.label ? ` [${String(args.label).trim()}]` : ""}\n\n${text}`;
-					const savedPath = appendNote(root, paper.id, block);
-					rememberCapture(root, paper.id, hash, args?.label);
-					return {
-						normalized: text,
-						duplicate: false,
-						paper,
-						savedPath,
-						droppedLines: norm.droppedLines,
-						switchedTo
-					};
-				}
-				return {
+				const duplicate = isDuplicate(root, paper.id, hash);
+				const base = {
 					normalized: text,
-					duplicate: true,
+					duplicate: false,
 					paper,
 					savedPath: "",
-					droppedLines: norm.droppedLines,
-					switchedTo
+					droppedLines: norm.droppedLines
+				};
+				if (!duplicate) {
+					const block = `## 📌 片段 [${nowStamp()}]${args?.label ? ` [${String(args.label).trim()}]` : ""}\n\n${text}`;
+					base.savedPath = appendNote(root, paper.id, block);
+					rememberCapture(root, paper.id, hash, args?.label);
+				} else base.duplicate = true;
+				return {
+					...base,
+					...switchedTo ? { switchedTo } : {}
 				};
 			}
 		},
