@@ -1,0 +1,3 @@
+name: 📚 文献精读 · Router Paper
+description: 文献/论文阅读专用预设——论文工具(归档/笔记/术语/检索/当前论文记忆)仅在此预设可用;文献任务进入精读模式,其他任务按渠道自适应路由(官方 API flash→routing-suite / pro→anchored-standard;opencode-go flash→v4-flash-godmode / 其他→warmupbetter-replay)
+order: 3
