@@ -17,7 +17,7 @@
   图表转录、`glossary.md` 术语表);文件夹系统支持**多文件夹归属**(虚拟收藏集)、
   过滤、拖入归类、新建/重命名/删除
 - **🧠 当前论文记忆**:对话自动注入「当前论文」上下文;**per-session 独立指针**,
-  多对话并行各看各的论文、各归各的笔记
+  多对话并行各看各的论文、各归各的笔记;粘贴内容含另一篇论文标题时**自动识别切换**
 - **🔒 预设门控**:工具与 UI 仅对 `allowedPresets` 配置的预设开放
 - **🤖 模型工具集**:`paper_switch` / `paper_capture` / `paper_read_figure` /
   `paper_attach_pdf` / `paper_glossary` / `paper_qa` / `paper_summary` / `paper_find`
