@@ -60,6 +60,16 @@ cp -r presets/channel-router presets/router-paper ~/.dsh/.agent-presets/
   (`plugin/` 目录即其快照,含构建产物 `dist/*.tgz`)
 - 插件配置中将 `allowedPresets` 设为 `["channel-router"]`(默认值)即完成门控绑定
 
+## 可选依赖:ModLens(图片识别)
+
+- **不是必需**:没有 ModLens 时,插件照常工作,仅**图片解读**相关功能
+  (`paper_read_figure` 工具、面板「🖼️ 解读图片」、粘贴图片 OCR)会返回
+  明确的提示错误,不影响 PDF 阅读 / 文字归档 / 笔记 / 检索 / 记忆
+- **启用方式**:安装 [ModLens](https://github.com/liustack/modlens)(独立 GitHub
+  项目)到 web profile 后,插件自动探测(`~/.modlens/config.json` /
+  `$MODLENS_BIN` / profile node_modules);也可在插件配置 `modlensBin` 指定
+- 论文窗口状态栏会显示视觉是否就绪(✅/❌);`install.sh` 安装时会自动探测并提示
+
 ## 说明
 
 - **只含文献相关组件**:主预设 `channel-router`(文献精读 · Router Paper)
