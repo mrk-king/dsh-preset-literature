@@ -48,9 +48,12 @@ cp -r channel-router router-standard router-flash anchored-standard \
 
 ### 前置依赖
 
-论文工具(`paper_*`)与论文窗口由独立的 **dsh-paper-reading 插件**提供,
-本仓库不含该插件。安装插件后,在插件配置中将 `allowedPresets`
-设为 `["channel-router"]`(默认值)即完成门控绑定。
+论文工具(`paper_*`)与论文窗口由独立的 **dsh-paper-reading 插件**提供:
+
+- 插件仓库:[mrk-king/dsh-paper-reading](https://github.com/mrk-king/dsh-paper-reading)
+  (下载 `dist/` 下的 tgz 安装即可)
+- 安装插件后,在插件配置中将 `allowedPresets` 设为 `["channel-router"]`
+  (默认值)即完成门控绑定
 
 ## 说明
 
