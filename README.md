@@ -50,9 +50,10 @@ dsh-preset-literature/
 ## 安装
 
 ```bash
-# 1) 把各预设目录复制到 agent-presets 根目录
-cp -r channel-router router-standard router-flash anchored-standard \
-      warmupbetter warmupbetter-replay router-paper \
+# 1) 把 presets/ 下各目录复制到 agent-presets 根目录
+cp -r presets/channel-router presets/router-standard presets/router-flash \
+      presets/anchored-standard presets/warmupbetter \
+      presets/warmupbetter-replay presets/router-paper \
       ~/.dsh/.agent-presets/
 
 # 2) 重启 DeepSeek Harness(或刷新预设列表)

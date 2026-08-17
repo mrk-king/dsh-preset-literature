@@ -2,6 +2,9 @@
 # 📚 dsh-preset-literature 一键安装:预设 + 论文插件
 set -euo pipefail
 
+# 无论从哪个目录调用,都先切到脚本所在仓库根
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 PRESETS=(channel-router router-standard router-flash anchored-standard warmupbetter warmupbetter-replay router-paper)
 AGENT_PRESETS_DIR="${AGENT_PRESETS_DIR:-$HOME/.dsh/.agent-presets}"
 DSH_PROFILE_DIR="${DSH_PROFILE_DIR:-$HOME/.dsh/profiles/web}"
@@ -24,8 +27,9 @@ if [ -z "$TGZ" ]; then
   echo "!! 未找到 plugin/dist/*.tgz" >&2
   exit 1
 fi
+TGZ_ABS="$(cd "$(dirname "$TGZ")" && pwd)/$(basename "$TGZ")"
 mkdir -p "$DSH_PROFILE_DIR"
-if (cd "$DSH_PROFILE_DIR" && npm i "$(cd "$(dirname "$TGZ")" && pwd)/$(basename "$TGZ")" --no-audit --no-fund >/dev/null 2>&1); then
+if (cd "$DSH_PROFILE_DIR" && npm i "$TGZ_ABS" --no-audit --no-fund >/dev/null 2>&1); then
   echo "    插件已通过 npm 安装"
 else
   echo "    npm 安装失败,改用直接解压(node_modules/@dsh-external/dsh-paper-reading)"
