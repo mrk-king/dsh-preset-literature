@@ -42,6 +42,13 @@ else
   echo "    插件已解压安装"
 fi
 
+MODLENS="$DSH_PROFILE_DIR/node_modules/@liustack/modlens/dist/main.js"
+if [ -f "$MODLENS" ] || [ -n "${MODLENS_BIN:-}" ]; then
+  echo "    视觉引擎 ModLens:已就绪 ✅"
+else
+  echo "    视觉引擎 ModLens:未安装(可选)——图片解读不可用,其余功能正常"
+fi
+
 echo ""
 echo "✅ 安装完成!"
 echo "下一步:"
