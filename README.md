@@ -11,12 +11,12 @@ DeepSeek Harness 的文献/论文阅读一体化方案:**agent 预设 + 论文�
 ```bash
 git clone https://github.com/mrk-king/dsh-preset-literature.git
 cd dsh-preset-literature
-./install.sh        # 安装 7 个预设目录 + 论文插件
+./install.sh        # 安装 2 个预设目录 + 论文插件
 # 重启 DeepSeek Harness → 选「📚 文献精读 · Router Paper」→ 开新会话
 ```
 
 `install.sh` 自动完成:
-1. 复制 7 个预设目录到 `~/.dsh/.agent-presets/`
+1. 复制 2 个预设目录(`channel-router` + `router-paper`)到 `~/.dsh/.agent-presets/`
 2. 安装论文插件到 `~/.dsh/profiles/web`(npm 失败时自动降级为直接解压)
 
 > 环境变量可覆盖默认路径:`AGENT_PRESETS_DIR` / `DSH_PROFILE_DIR`
@@ -81,4 +81,4 @@ cp -r presets/channel-router presets/router-paper ~/.dsh/.agent-presets/
 
 ## License
 
-MIT(各源预设目录保留其自带 LICENSE)
+MIT
