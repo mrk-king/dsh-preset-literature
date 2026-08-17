@@ -1,9 +1,25 @@
-# 📚 文献精读 · Router Paper
+# 📚 文献精读 · Router Paper(预设 + 插件全家桶)
 
-DeepSeek Harness 的文献/论文阅读专用 agent 预设(内部 id: `channel-router`)。
+DeepSeek Harness 的文献/论文阅读一体化方案:**agent 预设 + 论文插件**,
+一次安装,即开即用。
 
 > 论文功能(归档 / 笔记 / 术语 / 检索 / 当前论文记忆)仅在本预设下可用;
 > 其他任务按渠道自适应路由(官方 API 与 opencode-go 分渠道调度)。
+
+## 一键安装
+
+```bash
+git clone https://github.com/mrk-king/dsh-preset-literature.git
+cd dsh-preset-literature
+./install.sh        # 安装 7 个预设目录 + 论文插件
+# 重启 DeepSeek Harness → 选「📚 文献精读 · Router Paper」→ 开新会话
+```
+
+`install.sh` 自动完成:
+1. 复制 7 个预设目录到 `~/.dsh/.agent-presets/`
+2. 安装论文插件到 `~/.dsh/profiles/web`(npm 失败时自动降级为直接解压)
+
+> 环境变量可覆盖默认路径:`AGENT_PRESETS_DIR` / `DSH_PROFILE_DIR`
 
 ## 功能
 
@@ -19,17 +35,16 @@ DeepSeek Harness 的文献/论文阅读专用 agent 预设(内部 id: `channel-r
 
 ```
 dsh-preset-literature/
-├── channel-router/          # 主预设(文献精读 · Router Paper)
-│   ├── agent.cordis.yml     # 预设组合声明
-│   ├── preset.yml           # 显示名/描述/排序
-│   ├── channel-core.mjs     # 渠道矩阵与检测(零依赖)
-│   └── channel-router-bootstrap.mjs  # 渠道自适应路由插件
-├── router-standard/         # 官方 flash 渠道委托源
-├── router-flash/            # opencode flash 渠道委托源
-├── anchored-standard/       # 官方 pro 渠道委托源
-├── warmupbetter/            # 官方其他渠道委托源(含 LICENSE.deepseek-harness)
-├── warmupbetter-replay/     # opencode 其他渠道委托源(含 LICENSE.deepseek-harness)
-└── router-paper/            # 文献精读核心(persona + 论文工具路由)
+├── install.sh               # 一键安装脚本
+├── presets/                 # 预设目录(安装到 ~/.dsh/.agent-presets/)
+│   ├── channel-router/      # 主预设(文献精读 · Router Paper)
+│   ├── router-standard/     # 官方 flash 渠道委托源
+│   ├── router-flash/        # opencode flash 渠道委托源
+│   ├── anchored-standard/   # 官方 pro 渠道委托源
+│   ├── warmupbetter/        # 官方其他渠道委托源(含 LICENSE.deepseek-harness)
+│   ├── warmupbetter-replay/ # opencode 其他渠道委托源(含 LICENSE.deepseek-harness)
+│   └── router-paper/        # 文献精读核心(persona + 论文工具路由)
+└── plugin/                  # dsh-paper-reading 论文插件(源码 + dist/*.tgz)
 ```
 
 ## 安装
@@ -46,14 +61,11 @@ cp -r channel-router router-standard router-flash anchored-standard \
 #    (可设为默认预设)
 ```
 
-### 前置依赖
+### 组件来源
 
-论文工具(`paper_*`)与论文窗口由独立的 **dsh-paper-reading 插件**提供:
-
-- 插件仓库:[mrk-king/dsh-paper-reading](https://github.com/mrk-king/dsh-paper-reading)
-  (下载 `dist/` 下的 tgz 安装即可)
-- 安装插件后,在插件配置中将 `allowedPresets` 设为 `["channel-router"]`
-  (默认值)即完成门控绑定
+- **插件独立仓库**:[mrk-king/dsh-paper-reading](https://github.com/mrk-king/dsh-paper-reading)
+  (`plugin/` 目录即其快照,含构建产物 `dist/*.tgz`)
+- 插件配置中将 `allowedPresets` 设为 `["channel-router"]`(默认值)即完成门控绑定
 
 ## 说明
 
