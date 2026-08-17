@@ -1131,7 +1131,10 @@ window.__ModuleLoader__.load({
 				try {
 					sid = ctx.sessions?.list?.getSnapshot?.().current ?? "";
 				} catch {}
-				activeSid = sid;
+				if (sid !== activeSid && windowOpen) {
+					activeSid = sid;
+					refreshWindow().catch(() => {});
+				} else activeSid = sid;
 				getJson(`gate?sid=${encodeURIComponent(sid)}`).then((g) => {
 					if (g?.ok) applyGate(g.allowed === true);
 				}).catch(() => {});

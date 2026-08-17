@@ -143,6 +143,29 @@ export function apply(ctx: AppContext, config: Config): void {
     }
   }
 
+  /**
+   * 从粘贴文本中识别其所属论文:若文本包含库中某篇(非当前)论文的完整标题,
+   * 返回该论文(多个命中或标题过短返回 null 表示不自动切换)。
+   */
+  function detectPaperFromText(text: string, sid?: string | null): lib.PaperSummary | null {
+    const { papers } = lib.listPapers(root)
+    const cur = currentPaperFor(sid)
+    const t = text.toLowerCase()
+    let hit: lib.PaperSummary | null = null
+    for (const p of papers) {
+      if (cur && p.id === cur.id) continue
+      // 候选标题:完整标题 + 剥离尾部括号注释(如 " (MAE)")的标题
+      const full = p.title.toLowerCase().trim()
+      const stripped = full.replace(/\s*\([^)]*\)\s*$/, '').trim()
+      const candidates = [...new Set([full, stripped].filter(x => x.length >= 8))]
+      if (candidates.some(c => t.includes(c))) {
+        if (hit) return null // 多个命中 → 不自动切换,交给模型询问
+        hit = p
+      }
+    }
+    return hit
+  }
+
   function pdfMetaOf(id: string): { title: string; pages: number; bytes: number } | null {
     const m = lib.pdfMetaOf(root, id)
     return m ? { title: m.title, pages: m.pages, bytes: m.bytes } : null
@@ -206,6 +229,7 @@ export function apply(ctx: AppContext, config: Config): void {
             paper: { type: 'object' },
             savedPath: { type: 'string' },
             droppedLines: { type: 'number' },
+            switchedTo: { type: 'string' },
           },
           required: ['normalized', 'duplicate', 'paper', 'savedPath', 'droppedLines'],
           additionalProperties: false,
@@ -215,7 +239,16 @@ export function apply(ctx: AppContext, config: Config): void {
       async execute(args, exec: any) {
         const raw = String(args?.text ?? '')
         if (raw.trim() === '') throw new Error('paper_capture needs non-empty text')
-        const { paper } = requireCurrentPaperFor(exec)
+        let { paper } = requireCurrentPaperFor(exec)
+        const sid = exec?.agent?.session?.id
+        // 内容自动识别:粘贴文本含另一篇论文标题 → 自动切换当前论文
+        const detected = detectPaperFromText(raw, sid)
+        let switchedTo: string | undefined
+        if (detected && detected.id !== paper.id) {
+          paper = detected
+          if (sid) sessionCurrents.set(sid, detected.id)
+          switchedTo = detected.title
+        }
         const norm = args?.raw === true
           ? { text: raw, droppedLines: 0, joinedHyphens: 0, joinedLines: 0 }
           : normalizePastedText(raw)
@@ -228,9 +261,9 @@ export function apply(ctx: AppContext, config: Config): void {
           const block = `## 📌 片段 [${stamp}]${label}\n\n${text}`
           const savedPath = lib.appendNote(root, paper.id, block)
           lib.rememberCapture(root, paper.id, hash, args?.label)
-          return { normalized: text, duplicate: false, paper, savedPath, droppedLines: norm.droppedLines }
+          return { normalized: text, duplicate: false, paper, savedPath, droppedLines: norm.droppedLines, switchedTo }
         }
-        return { normalized: text, duplicate: true, paper, savedPath: '', droppedLines: norm.droppedLines }
+        return { normalized: text, duplicate: true, paper, savedPath: '', droppedLines: norm.droppedLines, switchedTo }
       },
     },
     {
@@ -659,7 +692,15 @@ export function apply(ctx: AppContext, config: Config): void {
             const body = await readBody(req)
             const raw = String(body?.text ?? '')
             if (raw.trim() === '') return json(res, { ok: false, error: 'text required' })
-            const { paper } = requireRoutePaper()
+            let { paper } = requireRoutePaper()
+            // 内容自动识别:粘贴文本含另一篇论文标题 → 自动切换
+            const detected = detectPaperFromText(raw, lastActiveSession)
+            let switchedTo: string | null = null
+            if (detected && detected.id !== paper.id) {
+              paper = detected
+              if (lastActiveSession) sessionCurrents.set(lastActiveSession, detected.id)
+              switchedTo = detected.title
+            }
             const norm = normalizePastedText(raw)
             const text = norm.text.slice(0, config.maxCaptureChars)
             const hash = lib.captureHash(text)
@@ -681,6 +722,7 @@ export function apply(ctx: AppContext, config: Config): void {
               normalized: text,
               duplicate,
               paper,
+              switchedTo,
               droppedLines: norm.droppedLines,
               chatPushed,
             })
@@ -1059,7 +1101,7 @@ function presetFromDisk(sid: string): string | null {
 const PAPER_SECTION_TEXT = [
   '## 论文阅读模式(paper-reading plugin)',
   '用户在阅读文献时会复制文字或图片给你。请遵守:',
-  '1. 用户粘贴文字后,先用 paper_capture 清洗并归档到当前论文(它会处理 PDF 断行/连字符/页码),再基于返回的清洗文本回答。',
+  '1. 用户粘贴文字后,先用 paper_capture 清洗并归档到当前论文(它会处理 PDF 断行/连字符/页码,且会自动识别内容所属论文:若粘贴文本含库中另一篇论文的完整标题,会自动切换当前论文并归档)。回答时基于该论文记忆;若内容明显不属于当前论文又无法自动识别(标题未出现),先询问用户是哪篇论文再归档。',
   '1b. 用户拖入 PDF 文件或给出 PDF 路径时,先用 paper_attach_pdf 归档(提取元信息+全文),再基于提取文本解读。注意:paper_attach_pdf 的 title 必填——用户未给论文名时,必须先询问论文题目再归档;归档自动进入「默认」文件夹;需要看图表时配合 paper_read_figure。',
   '2. 用户给出图片路径/URL 或粘贴图片时,用 paper_read_figure 读取并归档(OCR 全文 + 摘要),基于转录内容解读图表/公式/页面,不要臆测图片内容。',
   '3. 解释论文内容时:忠于原文、指出所在章节/公式编号、公式用 LaTeX、不确定处明确标注、按需维护术语表(paper_glossary add)。',
@@ -1206,6 +1248,7 @@ function formatSwitch(value: any): string {
 function formatCapture(value: any): string {
   const lines = [
     `论文: 《${value.paper?.title}》`,
+    value.switchedTo ? `⚠️ 检测到内容属于《${value.switchedTo}》,已自动切换当前论文并归档` : '',
     `重复: ${value.duplicate ? '是(未重复归档)' : '否(已归档)'}`,
     value.savedPath ? `已保存: ${value.savedPath}` : '',
     `清理: 去掉 ${value.droppedLines} 行杂项`,

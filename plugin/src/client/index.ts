@@ -1267,7 +1267,13 @@ function setupRightWindow(ctx: ClientContext): void {
     // 上报当前正在查看的会话 id(侧栏选中项),host 按该会话的预设判定
     let sid = ''
     try { sid = ctx.sessions?.list?.getSnapshot?.().current ?? '' } catch { /* ignore */ }
-    activeSid = sid
+    // 切换会话 → 立即刷新论文窗口内容(论文指针是 per-session 的)
+    if (sid !== activeSid && windowOpen) {
+      activeSid = sid
+      void refreshWindow().catch(() => {})
+    } else {
+      activeSid = sid
+    }
     void getJson(`gate?sid=${encodeURIComponent(sid)}`)
       .then(g => { if (g?.ok) applyGate(g.allowed === true) })
       .catch(() => {})
