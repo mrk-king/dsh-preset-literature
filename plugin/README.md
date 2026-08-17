@@ -11,8 +11,13 @@
 - **🧹 文字清洗归档**:PDF 复制出来的乱排版(页码、断行、连字符、重复页眉)
   自动修复,归档到当前论文,并按内容去重
 - **📄 PDF 论文**:拖入 PDF → 自动入库(标题=文件名)+ `pdftotext` 全文提取;
-  **论文窗口内自托管 pdf.js legacy 阅读器**(缩放/搜索/翻页/旋转,文字图片可选中复制)
-- **🖼️ 图片解读**:选图/粘贴图片 → ModLens OCR 转录 → 归档 → 发送给 AI 解读
+  **论文窗口内自托管 pdf.js legacy 阅读器**(缩放/搜索/翻页/旋转,文字可直接选中复制;
+  图片因 pdf.js 画在 canvas 上无法原生复制,用工具条「🖼 提取图片」一键提取页码图片——
+  支持按页/区间/全部提取、自动去重、逐张「复制到剪贴板 / 下载」)
+- **🖼️ 图片解读**(`visionMode=auto`,默认):当前会话模型**自带识图**(如 GPT-4o/Claude/
+  Gemini 等,harness 按模型能力自动判定)→ 图片直接发给模型解读,**无需 ModLens**;
+  模型无识图能力时 → 走 ModLens OCR 转录再发给 AI。也可用 `visionMode=modlens|model`
+  强制指定。识图模式在窗口状态栏实时显示(模型识图 / ModLens)
 - **📒 论文库与文件夹**:每篇论文独立笔记(`notes.md` 问答片段、`figures.md`
   图表转录、`glossary.md` 术语表);文件夹系统支持**多文件夹归属**(虚拟收藏集)、
   过滤、拖入归类、新建/重命名/删除
@@ -64,7 +69,8 @@ npm pack             # 产出 tgz(含 lib/ 与 assets/)
 | 字段 | 默认 | 说明 |
 |---|---|---|
 | `libraryRoot` | `~/Documents/papers-library` | 论文库根目录 |
-| `modlensBin` | 自动探测 | ModLens 视觉引擎(读图 OCR,可选) |
+| `modlensBin` | 自动探测 | ModLens 视觉引擎(读图 OCR,模型无识图时兜底) |
+| `visionMode` | `auto` | 识图模式:`auto`(模型自带识图优先,否则 ModLens)/ `modlens`(永远 ModLens)/ `model`(永远直接发图给模型,当前模型无识图能力时报错) |
 | `allowedPresets` | `["channel-router"]` | 允许论文功能的预设 id 列表 |
 | `chatPush` | `true` | 面板内容可推送到对话 |
 | `promptSection` | `true` | 注入论文阅读行为提示词段 |
@@ -76,6 +82,7 @@ npm pack             # 产出 tgz(含 lib/ 与 assets/)
   config:
     allowedPresets: ['channel-router']
     chatPush: true
+    # visionMode: auto   # auto / modlens / model
 ```
 
 ## 数据位置
@@ -89,7 +96,8 @@ npm pack             # 产出 tgz(含 lib/ 与 assets/)
 - `lib/` — 编译后的 host 插件 + client 模块
 - `assets/pdfjs/` `assets/pdfjs-legacy/` — 自托管 Mozilla pdf.js viewer
   (Apache-2.0,见各目录 LICENSE)
-- 运行时仅依赖 Node 内建(node 20+);视觉能力可选(ModLens)
+- 运行时仅依赖 Node 内建(node 20+);识图优先用当前模型的视觉能力(visionMode=auto),
+  模型无识图时可选 ModLens 兜底
 
 ## License
 

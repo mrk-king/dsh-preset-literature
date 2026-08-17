@@ -179,7 +179,8 @@ window.__ModuleLoader__.load({
 						papers = s.papers ?? [];
 						currentId = s.current?.id ?? null;
 						renderPaperSelect();
-						status.textContent = `论文库:${papers.length} 篇 · 当前:${s.current?.title ?? "(未选择)"} · 视觉:${s.vision ? "✅" : "❌"} · 对话推送:${s.chatPush ? "✅" : "❌(先在对话区发消息)"}`;
+						const visionLabel = s.visionMode === "model" || s.modelVision ? "模型识图" : s.vision ? "ModLens" : "❌";
+						status.textContent = `论文库:${papers.length} 篇 · 当前:${s.current?.title ?? "(未选择)"} · 识图:${visionLabel} · 对话推送:${s.chatPush ? "✅" : "❌(先在对话区发消息)"}`;
 					}
 					async function refreshNotes() {
 						let n = null;
@@ -271,7 +272,7 @@ window.__ModuleLoader__.load({
 								question
 							}).then((r) => {
 								if (!r?.ok) throw new Error(r?.error ?? "read-image failed");
-								status.textContent = r.chatPushed ? `✅ 图片已 OCR 归档并发送给 AI(${(r.transcript ?? "").length} 字转录)` : "⚠️ 图片已归档,但发送失败:请先在对话区发一条消息激活对话。";
+								status.textContent = r.mode === "model" ? r.chatPushed ? "✅ 图片已归档并直接发送给模型识图(无需 ModLens),回复见对话区" : "⚠️ 图片已归档,但发送失败:请先在对话区发一条消息激活对话。" : r.chatPushed ? `✅ 图片已 OCR 归档并发送给 AI(${(r.transcript ?? "").length} 字转录)` : "⚠️ 图片已归档,但发送失败:请先在对话区发一条消息激活对话。";
 								refreshNotes();
 							}).catch(showError).finally(() => setBusy(false, captureBtn, askBtn, imageBtn));
 						};
@@ -574,16 +575,25 @@ window.__ModuleLoader__.load({
 			const tabPdf = el("button", TAB_ON, "📄 论文 PDF");
 			const tabNotes = el("button", TAB_OFF, "📒 笔记");
 			tabRow.append(tabPdf, tabNotes);
-			attachHint(tabPdf, "📄 论文 PDF\n\npdf.js 阅读器:文字/图片可直接选中复制;工具条支持缩放/搜索/翻页/旋转;PDF 可直接拖进窗口归档。");
+			attachHint(tabPdf, "📄 论文 PDF\n\npdf.js 阅读器:文字可直接选中复制;图片请用「🖼 提取图片」复制/下载(pdf.js 把页面画在 canvas 上,浏览器不支持直接复制画布中的图片)。工具条支持缩放/搜索/翻页/旋转;PDF 可直接拖进窗口归档。");
 			attachHint(tabNotes, "📒 笔记 = 论文阅读存档\n\n· 在对话中提问论文 → AI 自动归档问答\n· 解释过的术语 → 自动存入术语表\n· 粘贴的文字/图表 → 归档为片段与转录\n\n内容会自动出现在本 tab,每 5 秒刷新。\n查看本 tab 顶部提示了解完整用法。");
 			const pdfPane = el("div", "flex:1;display:flex;flex-direction:column;margin:0 12px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;overflow:hidden");
 			const pdfInfo = el("div", "padding:5px 10px;font-size:12.5px;color:#334155;border-bottom:1px solid #e2e8f0", "");
+			const pdfExtractBar = el("div", "display:none;align-items:center;gap:6px;padding:4px 10px;border-bottom:1px solid #e2e8f0;background:#f8fafc");
+			const pdfExtractBtn = el("button", BTN_SM, "🖼 提取图片");
+			const pdfExtractPage = document.createElement("input");
+			pdfExtractPage.type = "text";
+			pdfExtractPage.placeholder = "页码(留空=全部)";
+			pdfExtractPage.style.cssText = "width:86px;font-size:12px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:4px";
+			const pdfExtractStatus = el("span", "font-size:11.5px;color:#64748b", "");
+			attachHint(pdfExtractBtn, "🖼 提取 PDF 图片\n\npdf.js 把页面渲染成 canvas,浏览器无法直接右键复制其中的图片——用本功能把当前论文里的图片提取出来:\n· 点击后弹出图片列表,每张可「📋 复制」到剪贴板或「⬇ 下载」;\n· 默认提取全部页面,可在输入框限定(如 3 或 2-5);\n· 自动按内容去重。");
+			pdfExtractBar.append(pdfExtractBtn, pdfExtractPage, pdfExtractStatus);
 			const pdfFrame = document.createElement("iframe");
 			pdfFrame.style.cssText = "flex:1;border:0;width:100%;background:#fff";
 			pdfFrame.title = "论文 PDF";
 			const pdfHint = el("div", "flex:1;display:flex;align-items:center;justify-content:center;padding:12px;font-size:13px;color:#64748b;text-align:center;border:2px dashed #e2e8f0;border-radius:6px;margin:8px;background:#f8fafc", "把 PDF 拖到这里添加论文\n标题默认 = 文件名(可重命名)\n同名论文则归档到它");
 			pdfHint.style.whiteSpace = "pre-line";
-			pdfPane.append(pdfInfo, pdfFrame, pdfHint);
+			pdfPane.append(pdfInfo, pdfExtractBar, pdfFrame, pdfHint);
 			const notesPane = el("div", "flex:1;display:flex;flex-direction:column;margin:0 12px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;overflow:hidden");
 			const notesHeader = el("div", "display:flex;align-items:center;gap:6px;padding:5px 10px;border-bottom:1px solid #e2e8f0;background:#f8fafc");
 			const notesTitle = el("span", "font-size:13px;font-weight:600;color:#334155", "📒 笔记");
@@ -669,6 +679,10 @@ window.__ModuleLoader__.load({
 			}
 			tabPdf.onclick = () => showPane("pdf");
 			tabNotes.onclick = () => showPane("notes");
+			pdfExtractBtn.onclick = () => runExtractPdfImages();
+			pdfExtractPage.onkeydown = (e) => {
+				if (e.key === "Enter") runExtractPdfImages();
+			};
 			showPane("pdf");
 			root.addEventListener("dragover", (e) => {
 				if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
@@ -730,6 +744,10 @@ window.__ModuleLoader__.load({
 				pdfFrame,
 				pdfHint,
 				pdfInfo,
+				pdfExtractBar,
+				pdfExtractBtn,
+				pdfExtractPage,
+				pdfExtractStatus,
 				tabPdf,
 				tabNotes
 			};
@@ -740,6 +758,201 @@ window.__ModuleLoader__.load({
 			const dom = windowDom;
 			if (!dom || !dom.paperSelect.value) return null;
 			return Array.from(dom.paperSelect.options).find((o) => o.value === dom.paperSelect.value)?.textContent?.trim() || null;
+		}
+		let pdfjsModule = null;
+		/** 动态加载插件自带的 pdf.js(legacy build,与 viewer 同版本)。 */
+		async function loadPdfjs() {
+			if (pdfjsModule) return pdfjsModule;
+			const mod = await import("/dsh-paper-reading/pdfjs-legacy/build/pdf.mjs");
+			mod.GlobalWorkerOptions.workerSrc = "/dsh-paper-reading/pdfjs-legacy/build/pdf.worker.mjs";
+			pdfjsModule = mod;
+			return mod;
+		}
+		/** 把 pdf.js 图像对象(kind: 0=1bpp灰 1=RGB 2=RGBA 3=8bpp灰)转成 canvas。 */
+		function imgDataToCanvas(img) {
+			const w = img.width;
+			const h = img.height;
+			const canvas = document.createElement("canvas");
+			canvas.width = w;
+			canvas.height = h;
+			const ctx2d = canvas.getContext("2d");
+			if (!ctx2d) return canvas;
+			const im = ctx2d.createImageData(w, h);
+			const out = im.data;
+			const data = img.data;
+			if (img.kind === 2) out.set(data);
+			else if (img.kind === 1) for (let i = 0, j = 0; i < out.length; i += 4, j += 3) {
+				out[i] = data[j];
+				out[i + 1] = data[j + 1];
+				out[i + 2] = data[j + 2];
+				out[i + 3] = 255;
+			}
+			else if (img.kind === 3) for (let i = 0, j = 0; i < out.length; i += 4, j++) {
+				const v = data[j];
+				out[i] = v;
+				out[i + 1] = v;
+				out[i + 2] = v;
+				out[i + 3] = 255;
+			}
+			else if (img.kind === 0) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+				const bit = data[y * w + x >> 3] >> 7 - (y * w + x & 7) & 1;
+				const o = (y * w + x) * 4;
+				const v = bit ? 255 : 0;
+				out[o] = v;
+				out[o + 1] = v;
+				out[o + 2] = v;
+				out[o + 3] = 255;
+			}
+			ctx2d.putImageData(im, 0, 0);
+			return canvas;
+		}
+		function hashBytes(data) {
+			let h1 = 2166136261;
+			const n = Math.min(data.length, 512);
+			for (let i = 0; i < n; i++) {
+				h1 ^= data[i];
+				h1 = Math.imul(h1, 16777619);
+			}
+			return (h1 >>> 0).toString(16);
+		}
+		/** 提取当前论文 PDF 的图片(按内容去重,上限 60 张)。pageSpec:'' 全部 / '3' / '2-5'。 */
+		async function extractPdfImages(pageSpec) {
+			const mod = await loadPdfjs();
+			if (!currentPdfId) throw new Error("当前论文没有 PDF");
+			const resp = await fetch(`/dsh-paper-reading/api/paper-pdf/${encodeURIComponent(currentPdfId)}`);
+			if (!resp.ok) throw new Error(`PDF 下载失败(${resp.status})`);
+			const doc = await mod.getDocument({ data: await resp.arrayBuffer() }).promise;
+			const pages = [];
+			const spec = pageSpec.trim();
+			if (!spec) for (let i = 1; i <= doc.numPages; i++) pages.push(i);
+			else if (/^\d+$/.test(spec)) {
+				const n = parseInt(spec, 10);
+				if (n < 1 || n > doc.numPages) throw new Error(`页码超出范围(1-${doc.numPages})`);
+				pages.push(n);
+			} else if (/^(\d+)-(\d+)$/.test(spec)) {
+				const m = spec.split("-").map((x) => parseInt(x, 10));
+				const lo = Math.min(m[0], m[1]);
+				const hi = Math.max(m[0], m[1]);
+				for (let i = lo; i <= hi && i <= doc.numPages; i++) pages.push(i);
+			} else throw new Error("页码格式:留空(全部) / 单页如 3 / 区间如 2-5");
+			const found = [];
+			const seen = /* @__PURE__ */ new Set();
+			for (const n of pages) {
+				const page = await doc.getPage(n);
+				const ops = await page.getOperatorList();
+				for (let i = 0; i < ops.fnArray.length && found.length < 60; i++) {
+					const fn = ops.fnArray[i];
+					let img = null;
+					if (fn === mod.OPS.paintImageXObject) try {
+						img = await page.objs.get(ops.argsArray[i][0]);
+					} catch {
+						continue;
+					}
+					else if (fn === mod.OPS.paintInlineImageXObject) img = ops.argsArray[i][0];
+					else continue;
+					if (!img || !img.data || !img.width || !img.height) continue;
+					const key = `${img.width}x${img.height}:${hashBytes(img.data)}`;
+					if (seen.has(key)) continue;
+					seen.add(key);
+					try {
+						found.push(imgDataToCanvas(img));
+					} catch {}
+				}
+			}
+			return found;
+		}
+		async function copyCanvasImage(canvas) {
+			try {
+				const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+				if (!blob) return false;
+				await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+				return true;
+			} catch {
+				return false;
+			}
+		}
+		function downloadCanvas(canvas, name) {
+			const a = document.createElement("a");
+			a.href = canvas.toDataURL("image/png");
+			a.download = name;
+			a.click();
+		}
+		/** 弹出提取结果面板(缩略图 + 复制/下载)。 */
+		function showExtractResults(items, elapsedMs) {
+			const overlay = document.createElement("div");
+			overlay.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:99999";
+			const panel = document.createElement("div");
+			panel.style.cssText = "background:#fff;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.25);width:min(680px,92vw);max-height:82vh;display:flex;flex-direction:column;overflow:hidden";
+			const head = document.createElement("div");
+			head.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#334155;font-weight:600";
+			head.textContent = `🖼 提取到 ${items.length} 张图片(${(elapsedMs / 1e3).toFixed(1)}s)`;
+			const closeBtn = document.createElement("button");
+			closeBtn.textContent = "✕ 关闭";
+			closeBtn.style.cssText = "margin-left:auto;font-size:12px;padding:2px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#f8fafc;cursor:pointer";
+			head.append(closeBtn);
+			const grid = document.createElement("div");
+			grid.style.cssText = "flex:1;overflow:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px";
+			if (items.length === 0) {
+				const empty = document.createElement("div");
+				empty.style.cssText = "grid-column:1/-1;text-align:center;color:#94a3b8;padding:30px 0;font-size:13px";
+				empty.textContent = "未找到图片(有些 PDF 的图是矢量绘制,或已被裁剪)。";
+				grid.append(empty);
+			}
+			items.forEach((canvas, idx) => {
+				const card = document.createElement("div");
+				card.style.cssText = "border:1px solid #e2e8f0;border-radius:6px;padding:6px;background:#f8fafc;display:flex;flex-direction:column;gap:6px";
+				const thumb = document.createElement("canvas");
+				thumb.width = canvas.width;
+				thumb.height = canvas.height;
+				thumb.getContext("2d")?.drawImage(canvas, 0, 0);
+				thumb.style.cssText = "max-width:100%;max-height:150px;object-fit:contain;margin:0 auto;background:#fff";
+				const meta = document.createElement("div");
+				meta.style.cssText = "font-size:11px;color:#64748b;text-align:center";
+				meta.textContent = `${canvas.width}×${canvas.height}`;
+				const row = document.createElement("div");
+				row.style.cssText = "display:flex;gap:6px;justify-content:center";
+				const copyBtn = document.createElement("button");
+				copyBtn.textContent = "📋 复制";
+				copyBtn.style.cssText = "font-size:11.5px;padding:2px 8px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;cursor:pointer";
+				const dlBtn = document.createElement("button");
+				dlBtn.textContent = "⬇ 下载";
+				dlBtn.style.cssText = "font-size:11.5px;padding:2px 8px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;cursor:pointer";
+				copyBtn.onclick = async () => {
+					const ok = await copyCanvasImage(canvas);
+					copyBtn.textContent = ok ? "✅ 已复制" : "❌ 复制失败(可用下载)";
+					setTimeout(() => {
+						copyBtn.textContent = "📋 复制";
+					}, 2e3);
+				};
+				dlBtn.onclick = () => downloadCanvas(canvas, `paper-fig-${idx + 1}.png`);
+				row.append(copyBtn, dlBtn);
+				card.append(thumb, meta, row);
+				grid.append(card);
+			});
+			closeBtn.onclick = () => overlay.remove();
+			overlay.onclick = (e) => {
+				if (e.target === overlay) overlay.remove();
+			};
+			panel.append(head, grid);
+			overlay.append(panel);
+			document.body.append(overlay);
+		}
+		/** 提取按钮入口。 */
+		function runExtractPdfImages() {
+			const dom = windowDom;
+			if (!dom) return;
+			const spec = dom.pdfExtractPage.value;
+			dom.pdfExtractBtn.disabled = true;
+			dom.pdfExtractStatus.textContent = "⏳ 提取中…";
+			const t0 = performance.now();
+			extractPdfImages(spec).then((items) => {
+				dom.pdfExtractStatus.textContent = "";
+				showExtractResults(items, performance.now() - t0);
+			}).catch((e) => {
+				dom.pdfExtractStatus.textContent = `❌ ${e instanceof Error ? e.message : String(e)}`;
+			}).finally(() => {
+				dom.pdfExtractBtn.disabled = false;
+			});
 		}
 		/** 打开输入弹窗;onSubmit 收到非空值后执行。 */
 		function windowPrompt(title, initial, placeholder, onSubmit) {
@@ -1009,11 +1222,14 @@ window.__ModuleLoader__.load({
 					windowDom.pdfFrame.style.display = "block";
 					windowDom.pdfHint.style.display = "none";
 				}
-				windowDom.pdfInfo.textContent = `📄 ${pdf.title} · ${pdf.pages} 页 · ${fmtBytes(pdf.bytes)} — 文字/图片可直接选中复制`;
+				windowDom.pdfInfo.textContent = `📄 ${pdf.title} · ${pdf.pages} 页 · ${fmtBytes(pdf.bytes)} — 文字可选中复制;图片用「🖼 提取图片」复制/下载`;
+				windowDom.pdfExtractBar.style.display = "flex";
+				windowDom.pdfExtractStatus.textContent = "";
 			} else {
 				currentPdfId = null;
 				windowDom.pdfFrame.style.display = "none";
 				windowDom.pdfFrame.removeAttribute("src");
+				windowDom.pdfExtractBar.style.display = "none";
 				windowDom.pdfHint.style.display = "flex";
 				windowDom.pdfInfo.textContent = pid ? "(未归档 PDF — 拖入或发给 AI)" : "(未选择论文)";
 			}

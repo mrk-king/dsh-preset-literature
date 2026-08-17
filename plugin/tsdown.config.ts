@@ -8,6 +8,8 @@ const CLIENT_EXTERNALS = [
   'cordis',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-runtime/client',
+  // pdf.js 动态加载:运行期从插件静态路由取(与 viewer 同版本),不打进 bundle
+  '/dsh-paper-reading/pdfjs-legacy/build/pdf.mjs',
 ]
 
 const clientBundle: UserConfig = {

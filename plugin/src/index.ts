@@ -6,15 +6,19 @@
  *  2. Web 面板 API (conversation.view 面板的 REST 后端),
  *  3. 面板「发送到对话」通道: 把捕获内容作为用户消息推给当前 GUI agent。
  *
- * 视觉能力复用本机已装的 ModLens (~/.modlens/config.json + web profile 的
- * @liustack/modlens CLI);论文库默认落在 ~/Documents/papers-library。
+ * 识图能力(visionMode=auto,默认):
+ *  - 当前会话模型自带识图(inputModalities 含 image)→ 图片直接发给模型,不调用 ModLens;
+ *  - 否则 → 复用本机已装的 ModLens (~/.modlens/config.json + web profile 的
+ *    @liustack/modlens CLI);
+ * 论文库默认落在 ~/Documents/papers-library。
  */
 import type { Context } from 'cordis'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
+import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { execFileSync } from 'node:child_process'
 import { homedir, tmpdir } from 'node:os'
 import { join, resolve, sep, extname } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import z from 'schemastery'
@@ -33,6 +37,8 @@ export interface Config {
   chatPush: boolean
   promptSection: boolean
   allowedPresets: string[]
+  /** 识图模式:auto=模型自带识图优先,否则 ModLens;modlens=永远走 ModLens;model=永远直接发图给模型。 */
+  visionMode: 'auto' | 'modlens' | 'model'
 }
 
 export const Config = z.object({
@@ -42,6 +48,7 @@ export const Config = z.object({
   chatPush: z.boolean().default(true),
   promptSection: z.boolean().default(true),
   allowedPresets: z.array(z.string()).default(['channel-router']),
+  visionMode: z.union(['auto', 'modlens', 'model'] as const).default('auto'),
 })
 
 type AppContext = Context & {
@@ -49,7 +56,14 @@ type AppContext = Context & {
     register(def: Record<string, unknown>): unknown
   }
   agents: {
-    get(id: string): { followup(message: unknown): void } | undefined
+    get(id: string): {
+      followup(message: unknown): void
+      options?: { provider?: string; model?: string }
+      session?: {
+        id: string
+        requestHeader?: () => { config?: { provider?: string; model?: string } }
+      }
+    } | undefined
   }
 }
 
@@ -57,7 +71,7 @@ interface ToolDef {
   name: string
   description: string
   parameters: Record<string, unknown>
-  output: { schema: Record<string, unknown>; render: (args: any, value: any) => Array<{ type: 'text'; text: string }> }
+  output: { schema: Record<string, unknown>; render: (args: any, value: any) => ContentBlock[] }
   timeoutMs?: number
   isConcurrencySafe?: () => boolean
   execute: (args: any, exec: { signal: AbortSignal }) => Promise<unknown>
@@ -70,7 +84,9 @@ export function apply(ctx: AppContext, config: Config): void {
   ctx.logger?.info?.(`[paper-reading] library=${root}`)
 
   let modlensBin = resolveModlensBin(config.modlensBin)
-  ctx.logger?.info?.(`[paper-reading] vision=${modlensBin ? 'modlens@' + modlensBin : 'unavailable'}`)
+  ctx.logger?.info?.(
+    `[paper-reading] library=${root} visionMode=${config.visionMode} modlens=${modlensBin ? 'yes' : 'no'}`,
+  )
 
   // ── active GUI session tracking (for panel → chat push) ────────────────
   let lastActiveSession: string | null = null
@@ -100,6 +116,87 @@ export function apply(ctx: AppContext, config: Config): void {
       return true
     } catch {
       return false
+    }
+  }
+
+  /** 推送一条带图片附件的用户消息(模型自带识图时用)。 */
+  function pushImageToChat(agent: { followup(message: unknown): void }, ref: ImageAttachmentRef, text: string): boolean {
+    try {
+      agent.followup(createUserMessage({
+        source: { kind: 'user' },
+        content: [
+          { type: 'image', attachment: ref },
+          { type: 'text', text: text.slice(0, config.maxCaptureChars) },
+        ],
+      }))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // ── 识图模式:模型自带识图 → 直接发图;否则 ModLens ──────────────
+  /** 查询某 agent 当前路由模型是否声明 image 输入能力(解析失败返回 false)。 */
+  async function agentModelSupportsImage(agent: any): Promise<boolean> {
+    try {
+      const llm = (ctx as any).get('llm')
+      if (!llm || !agent) return false
+      const routed = agent.session?.requestHeader?.()?.config
+      const provider = routed?.provider ?? agent.options?.provider
+      const model = routed?.model ?? agent.options?.model
+      if (!provider || !model) return false
+      const info = await llm.resolveModelInfo(provider, model)
+      return Array.isArray(info?.inputModalities) && info.inputModalities.includes('image')
+    } catch {
+      return false
+    }
+  }
+
+  /** 按配置 + 模型能力决定识图路径:'model' | 'modlens' | 'none'。 */
+  async function decideVisionMode(agent: any): Promise<'model' | 'modlens' | 'none'> {
+    const modelVision = await agentModelSupportsImage(agent)
+    if (config.visionMode === 'model') return modelVision ? 'model' : 'none'
+    if (config.visionMode === 'modlens') return modlensBin ? 'modlens' : 'none'
+    return modelVision ? 'model' : (modlensBin ? 'modlens' : 'none')
+  }
+
+  const IMAGE_MEDIA_TYPES: Record<string, ImageAttachmentRef['mediaType']> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+  }
+
+  function mediaTypeOf(ext: string): ImageAttachmentRef['mediaType'] | undefined {
+    return IMAGE_MEDIA_TYPES[ext.toLowerCase()]
+  }
+
+  /** 把图片字节写入持久化附件服务,返回可被消息引用的 ref;服务缺失/格式不符返回 null。 */
+  async function attachImageBytes(data: Uint8Array, ext: string, name?: string): Promise<ImageAttachmentRef | null> {
+    try {
+      const attachments = (ctx as any).get('attachments')
+      if (!attachments) return null
+      const mediaType = mediaTypeOf(ext)
+      if (!mediaType || !attachments.imageLimits?.mediaTypes?.includes(mediaType)) return null
+      return await attachments.saveImage({ data, mediaType, name: name ?? `fig-${Date.now()}${ext}` })
+    } catch {
+      return null
+    }
+  }
+
+  /** 把本地图片复制进论文 figures/ 目录;失败返回空串。 */
+  function copyImageToFigures(path: string, paper: { id: string }): string {
+    try {
+      if (/^https?:\/\//i.test(path) || !existsSync(path)) return ''
+      const ext = extOf(path)
+      const dir = join(lib.paperDir(root, paper.id), 'figures')
+      mkdirSync(dir, { recursive: true })
+      const dest = join(dir, `fig-${Date.now()}${ext}`)
+      copyFileSync(path, dest)
+      return dest
+    } catch {
+      return ''
     }
   }
 
@@ -279,7 +376,7 @@ export function apply(ctx: AppContext, config: Config): void {
     {
       name: 'paper_read_figure',
       description:
-        'Read an image (figure, table screenshot, formula, or a page scan of the paper) through the modlens vision bridge, archive the transcript into the current paper\'s figures log, and return the OCR/evidence text. Use whenever the user gives you an image file path or URL related to the paper and asks you to explain it. Requires a configured modlens engine.',
+        'Read an image (figure, table screenshot, formula, or a page scan of the paper) and archive it into the current paper\'s figures log. When the current model has built-in vision the image itself is returned as an image block and the model reads it directly (no ModLens); otherwise the modlens vision bridge returns the OCR/evidence transcript. Use whenever the user gives you an image file path or URL related to the paper and asks you to explain it.',
       parameters: {
         type: 'object',
         properties: {
@@ -296,39 +393,105 @@ export function apply(ctx: AppContext, config: Config): void {
             transcript: { type: 'string' },
             figurePath: { type: 'string' },
             paper: { type: 'object' },
-            vision: { type: 'boolean' },
+            mode: { type: 'string', enum: ['model', 'modlens'] },
+            image: {
+              oneOf: [
+                {
+                  type: 'object',
+                  properties: {
+                    attachmentId: { type: 'string' },
+                    mediaType: { type: 'string' },
+                    bytes: { type: 'integer' },
+                    width: { type: 'integer' },
+                    height: { type: 'integer' },
+                  },
+                  required: ['attachmentId', 'mediaType', 'bytes', 'width', 'height'],
+                  additionalProperties: false,
+                },
+                { type: 'null' },
+              ],
+            },
           },
-          required: ['transcript', 'figurePath', 'paper', 'vision'],
+          required: ['transcript', 'figurePath', 'paper', 'mode', 'image'],
           additionalProperties: false,
         },
-        render: (_args, value) => [{ type: 'text', text: formatFigure(value) }],
+        render: (_args, value) => value.mode === 'model' && value.image
+          ? [
+              { type: 'text', text: formatFigure(value) },
+              {
+                type: 'image',
+                attachment: {
+                  attachmentId: AttachmentId(value.image.attachmentId as string),
+                  mediaType: value.image.mediaType as ImageAttachmentRef['mediaType'],
+                  bytes: value.image.bytes as number,
+                  width: value.image.width as number,
+                  height: value.image.height as number,
+                },
+              },
+            ]
+          : [{ type: 'text', text: formatFigure(value) }],
       },
       timeoutMs: 220_000,
       isConcurrencySafe: () => true,
       async execute(args, exec) {
         const path = String(args?.path ?? '').trim()
         if (!path) throw new Error('paper_read_figure needs a non-empty "path"')
-        if (!modlensBin) throw new Error('vision engine unavailable: no modlens binary found (set config.modlensBin or $MODLENS_BIN)')
         const { paper } = requireCurrentPaperFor(exec)
         const title = args?.title ? String(args.title).trim() : '未命名图'
+        const mode = await decideVisionMode((exec as any).agent)
+        if (mode === 'none') {
+          throw new Error(
+            'vision unavailable: the current model does not declare image input and no modlens binary was found. '
+            + 'Either switch to an image-capable model, install ModLens, or set visionMode=model/modlens in the plugin config.',
+          )
+        }
+        const stamp = lib.nowStamp()
+
+        if (mode === 'model') {
+          // 模型自带识图:把图片作为图像块随工具结果返回,模型直接看图,不调用 ModLens
+          const figurePath = copyImageToFigures(path, paper)
+          let image: { attachmentId: string; mediaType: string; bytes: number; width: number; height: number } | null = null
+          if (/^https?:\/\//i.test(path)) {
+            // URL 图片:下载字节 → 附件服务
+            try {
+              const res = await fetch(path, { signal: exec.signal })
+              if (res.ok) {
+                const buf = new Uint8Array(await res.arrayBuffer())
+                const ref = await attachImageBytes(buf, extOf(new URL(path).pathname) || '.png')
+                if (ref) image = { attachmentId: ref.attachmentId, mediaType: ref.mediaType, bytes: ref.bytes, width: ref.width, height: ref.height }
+              }
+            } catch { /* keep image null */ }
+          } else if (existsSync(path)) {
+            try {
+              const ref = await attachImageBytes(readFileSync(path), extOf(path))
+              if (ref) image = { attachmentId: ref.attachmentId, mediaType: ref.mediaType, bytes: ref.bytes, width: ref.width, height: ref.height }
+            } catch { /* keep image null */ }
+          }
+          if (!image) {
+            throw new Error('paper_read_figure: could not attach the image for model vision (unsupported format or attachment service unavailable)')
+          }
+          const transcript =
+            '模型识图模式:图片已作为图像块随本工具结果返回,请直接查看图片内容回答用户,不要猜测图片内容。'
+            + (args?.question ? `\n用户关注点: ${String(args.question)}` : '')
+          const block = [
+            `## 🖼️ ${title} [${stamp}]`,
+            figurePath ? `- 文件: ${figurePath}` : `- 源: ${path}`,
+            '- 模式: 模型识图(未调用 ModLens)',
+            '',
+            '模型解读内容见对话回复。',
+          ].join('\n')
+          lib.appendFigure(root, paper.id, block)
+          return { transcript, figurePath, paper, mode, image }
+        }
+
+        // modlens 路径(模型无识图能力)
+        if (!modlensBin) throw new Error('vision engine unavailable: no modlens binary found (set config.modlensBin or $MODLENS_BIN)')
         const evidence = await readImage(modlensBin, path, {
           prompt: args?.question ? String(args.question) : undefined,
           signal: exec.signal,
         })
         const transcript = renderEvidence(evidence)
-        // archive a copy of the image into the paper's figures/ dir when local
-        let figurePath = ''
-        if (!/^https?:\/\//i.test(path) && existsSync(path)) {
-          try {
-            const ext = extOf(path)
-            const dir = join(lib.paperDir(root, paper.id), 'figures')
-            mkdirSync(dir, { recursive: true })
-            const { copyFileSync } = await import('node:fs')
-            figurePath = join(dir, `fig-${Date.now()}${ext}`)
-            copyFileSync(path, figurePath)
-          } catch { /* keep figurePath empty on copy failure */ }
-        }
-        const stamp = lib.nowStamp()
+        const figurePath = copyImageToFigures(path, paper)
         const block = [
           `## 🖼️ ${title} [${stamp}]`,
           figurePath ? `- 文件: ${figurePath}` : `- 源: ${path}`,
@@ -337,7 +500,7 @@ export function apply(ctx: AppContext, config: Config): void {
           transcript,
         ].join('\n')
         lib.appendFigure(root, paper.id, block)
-        return { transcript, figurePath, paper, vision: true }
+        return { transcript, figurePath, paper, mode, image: null }
       },
     },
     {
@@ -668,6 +831,9 @@ export function apply(ctx: AppContext, config: Config): void {
               const meta = pdfMetaOf(current.id)
               if (meta) pdf = meta
             }
+            const sid = sidFrom(req)
+            const agent = sid ? ctx.agents.get(sid) : undefined
+            const modelVision = agent ? await agentModelSupportsImage(agent) : false
             json(res, {
               ok: true,
               current,
@@ -676,6 +842,8 @@ export function apply(ctx: AppContext, config: Config): void {
               trash: lib.trashCount(root),
               libraryRoot: root,
               vision: Boolean(modlensBin),
+              visionMode: config.visionMode,
+              modelVision,
               chatPush: config.chatPush && Boolean(lastActiveSession),
               pdf,
               pdfRequests: pdfRequestCount,
@@ -745,20 +913,61 @@ export function apply(ctx: AppContext, config: Config): void {
             const body = await readBody(req)
             const data = String(body?.data ?? '')
             if (!data) return json(res, { ok: false, error: 'data required (base64 image)' })
-            if (!modlensBin) return json(res, { ok: false, error: 'vision engine unavailable (no modlens binary)' })
             const { paper } = requireRoutePaper()
+            const sid = sidFrom(req)
+            const agent = ctx.agents.get(sid ?? '')
+            const mode = await decideVisionMode(agent)
+            if (mode === 'none') {
+              return json(res, {
+                ok: false,
+                error: 'vision unavailable: the current model does not declare image input and no modlens binary was found. '
+                  + 'Switch to an image-capable model, install ModLens, or set visionMode=model/modlens.',
+              })
+            }
+            const title = body?.title ? String(body.title).trim() : '面板图片'
+            const question = body?.question ? String(body.question).trim() : undefined
+
+            // 模型自带识图:把图片直接发给模型,不调用 ModLens
+            if (mode === 'model') {
+              try {
+                const buf = Buffer.from(data.split(',')[1] ?? data, 'base64')
+                const ext = body?.ext ? String(body.ext) : '.png'
+                const ref = await attachImageBytes(buf, ext)
+                if (!ref) {
+                  return json(res, { ok: false, error: '无法写入附件服务:图片格式需为 png/jpg/webp/gif 之一' })
+                }
+                const dir = join(lib.paperDir(root, paper.id), 'figures')
+                mkdirSync(dir, { recursive: true })
+                const figurePath = join(dir, `fig-${Date.now()}${ext}`)
+                writeFileSync(figurePath, buf)
+                lib.appendFigure(root, paper.id, [
+                  `## 🖼️ ${title} [${lib.nowStamp()}]`,
+                  `- 文件: ${figurePath}`,
+                  '- 模式: 模型识图(未调用 ModLens)',
+                  '',
+                  '模型解读内容见对话回复。',
+                ].join('\n'))
+                let chatPushed = false
+                if (body?.ask === true && agent) {
+                  const q = question ?? '请解读这张图。'
+                  chatPushed = pushImageToChat(agent, ref, `🖼️ 论文《${paper.title}》图表(已归档):\n\n${q}`)
+                }
+                return json(res, { ok: true, mode, figurePath, paper, chatPushed })
+              } finally { /* nothing to clean */ }
+            }
+
+            // ModLens 路径(模型无识图能力)
+            if (!modlensBin) return json(res, { ok: false, error: 'vision engine unavailable (no modlens binary)' })
             let tmpFile: string | null = null
             try {
               tmpFile = saveBase64Image(data, body?.ext)
-              const title = body?.title ? String(body.title).trim() : '面板图片'
               const evidence: VisionEvidence = await readImage(modlensBin, tmpFile, {
-                prompt: body?.question ? String(body.question) : undefined,
+                prompt: question,
               })
               const transcript = renderEvidence(evidence)
               const dir = join(lib.paperDir(root, paper.id), 'figures')
               mkdirSync(dir, { recursive: true })
               const figurePath = join(dir, `fig-${Date.now()}${extOf(tmpFile)}`)
-              const { copyFileSync } = await import('node:fs')
               copyFileSync(tmpFile, figurePath)
               const block = [
                 `## 🖼️ ${title} [${lib.nowStamp()}]`,
@@ -770,10 +979,10 @@ export function apply(ctx: AppContext, config: Config): void {
               lib.appendFigure(root, paper.id, block)
               let chatPushed = false
               if (body?.ask === true) {
-                const q = body?.question ? `\n\n用户问题: ${String(body.question).trim()}` : '请解读这张图。'
+                const q = question ?? '请解读这张图。'
                 chatPushed = pushToChat(`🖼️ 论文《${paper.title}》图表(已归档,转录如下):\n\n${transcript}\n\n${q}`)
               }
-              json(res, { ok: true, transcript, figurePath, paper, chatPushed })
+              json(res, { ok: true, mode, transcript, figurePath, paper, chatPushed })
             } finally {
               if (tmpFile) {
                 try {
